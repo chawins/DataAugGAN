@@ -1,3 +1,5 @@
+import keras.backend as K
+from keras import layers
 from keras.initializers import TruncatedNormal
 from keras.layers import (BatchNormalization, Dense, Dropout, Embedding,
                           Flatten, Input, Multiply, Reshape)
@@ -6,17 +8,18 @@ from keras.layers.convolutional import Conv2D, Conv2DTranspose
 from keras.layers.noise import GaussianNoise
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
-from Minibatch import MinibatchDiscrimination
+from lib.Minibatch import MinibatchDiscrimination
 from param import *
 
+K.set_image_dim_ordering('th')
 
-def build_generator():
-    # we will map a pair of (z, L), where z is a latent vector and L is a
-    # label drawn from P_c, to image space (..., 3, 32, 32)
+def build_generator(latent_size=LATENT_SIZE):
+        # we will map a pair of (z, L), where z is a latent vector and L is a
+        # label drawn from P_c, to image space (..., 3, 32, 32)
     cnn = Sequential()
-    cnn.add(Dense(384 * 4 * 4, input_dim=LATENT_SIZE, activation='relu',
+    cnn.add(Dense(384 * 4 * 4, input_dim=latent_size, activation='relu',
                   kernel_initializer='TruncatedNormal', bias_initializer='Zeros'))
-    cnn.add(Reshape((4, 4, 384)))
+    cnn.add(Reshape((384, 4, 4)))
 
     cnn.add(Conv2DTranspose(192, kernel_size=5, strides=2, padding='same', activation='relu',
                             kernel_initializer='TruncatedNormal', bias_initializer='Zeros'))
@@ -30,17 +33,17 @@ def build_generator():
                             kernel_initializer='TruncatedNormal', bias_initializer='Zeros'))
 
     # this is the z space commonly refered to in GAN papers
-    latent = Input(shape=(LATENT_SIZE, ))
+    latent = Input(shape=(latent_size, ))
 
     # this will be our label
-    image_class = Input(shape=(1, ), dtype='int32')
+    image_class = Input(shape=(1,), dtype='int32')
 
     # 10 classes in CIFAR-10
-    cls = Flatten()(Embedding(N_CLASSES, LATENT_SIZE,
+    cls = Flatten()(Embedding(10, latent_size,
                               embeddings_initializer='TruncatedNormal')(image_class))
 
     # hadamard product between z-space and a class conditional embedding
-    h = Multiply()([latent, cls])
+    h = layers.multiply([latent, cls])
 
     fake_image = cnn(h)
 
@@ -53,7 +56,7 @@ def build_discriminator():
     cnn = Sequential()
 
     # Add this layer to prevent D from overfitting!
-    cnn.add(GaussianNoise(0.05, input_shape=INPUT_SHAPE))
+    cnn.add(GaussianNoise(0.05, input_shape=(3, 32, 32)))
 
     cnn.add(Conv2D(16, kernel_size=3, strides=2, padding='same',
                    kernel_initializer='TruncatedNormal', bias_initializer='Zeros'))
@@ -94,7 +97,7 @@ def build_discriminator():
 
     cnn.add(MinibatchDiscrimination(50, 30))
 
-    image = Input(shape=INPUT_SHAPE)
+    image = Input(shape=(3, 32, 32))
 
     features = cnn(image)
 
@@ -104,7 +107,7 @@ def build_discriminator():
     # belongs to.
     fake = Dense(1, activation='sigmoid', name='generation',
                  kernel_initializer='TruncatedNormal', bias_initializer='Zeros')(features)
-    aux = Dense(N_CLASSES, activation='softmax', name='auxiliary',
+    aux = Dense(10, activation='softmax', name='auxiliary',
                 kernel_initializer='TruncatedNormal', bias_initializer='Zeros')(features)
 
     return Model(image, [fake, aux])

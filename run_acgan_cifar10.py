@@ -17,6 +17,8 @@ def train(prog=True):
 
     # Load MNIST
     x_train, y_train, x_test, y_test = load_cifar10()
+    x_train, x_test = x_train.squeeze(), x_test.squeeze()
+    y_train, y_test = y_train.squeeze(), y_test.squeeze()
 
     # Build model
     d = build_discriminator()
@@ -49,7 +51,7 @@ def train(prog=True):
 
         for index in range(n_batch):
             progress_bar.update(index, force=True)
-            d_loss = 0
+            d_loss = np.zeros(3)
 
             # Train the discriminator for N_DIS iterations before training
             # the generator once
@@ -149,10 +151,24 @@ def train(prog=True):
         generated_images = g.predict(
             [noise, sampled_labels], verbose=0)
 
-        # arrange them into a grid
-        img = (np.concatenate([r.reshape(-1, 28)
-                               for r in np.split(generated_images, 10)
-                              ], axis=-1) * SCALE + SCALE).astype(np.uint8)
+        def vis_square(data, padsize=1, padval=-1):
+
+            # force the number of filters to be square
+            n = int(np.ceil(np.sqrt(data.shape[0])))
+            padding = ((0, n ** 2 - data.shape[0]), (0, padsize),
+                       (0, padsize)) + ((0, 0),) * (data.ndim - 3)
+            data = np.pad(data, padding, mode='constant',
+                          constant_values=(padval, padval))
+
+            # tile the filters into an image
+            data = data.reshape((n, n) + data.shape[1:]).transpose(
+                (0, 2, 1, 3) + tuple(range(4, data.ndim + 1)))
+            data = data.reshape(
+                (n * data.shape[1], n * data.shape[3]) + data.shape[4:])
+
+            return (data * SCALE + SCALE).astype(np.uint8)
+
+        img = vis_square(generated_images)
 
         Image.fromarray(img).save(
             '{}plot_epoch_{:03d}_generated.png'.format(VIS_DIR, epoch))
